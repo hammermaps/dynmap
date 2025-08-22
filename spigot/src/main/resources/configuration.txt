@@ -330,6 +330,10 @@ render-triggers:
   - blockgrow
   #- blockredstone
 
+# Server ID: used to identify this server in multi-server setups
+# If not set, defaults to 0 (default server)
+server-id: 0
+
 # Title for the web page - if not specified, defaults to the server's name (unless it is the default of 'Unknown Server')
 #webpage-title: "My Awesome Server Map"
 

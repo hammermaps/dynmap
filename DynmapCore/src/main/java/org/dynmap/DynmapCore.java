@@ -468,7 +468,10 @@ public class DynmapCore implements DynmapCommonAPI {
             Log.severe("Map storage initialization failure");
             return false;
         }
-        
+
+        /* Set Server-ID */
+        defaultStorage.setServerID((long)configuration.getLong("server-id", 0));
+
         /* Register API with plugin, if needed */
         if(!markerAPIInitialized()) {
             MarkerAPIImpl api = MarkerAPIImpl.initializeMarkerAPI(this);
