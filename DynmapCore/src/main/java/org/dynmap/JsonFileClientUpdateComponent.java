@@ -271,31 +271,29 @@ public class JsonFileClientUpdateComponent extends ClientUpdateComponent {
         sb.append("'\n }\n};\n");
         
         byte[] outputBytes = sb.toString().getBytes(cs_utf8);
-        MapManager.scheduleDelayedJob(new Runnable() {
-        	public void run() {
-        		if (core.getDefaultMapStorage().needsStaticWebFiles()) {
-        			BufferOutputStream os = new BufferOutputStream();
-        			os.write(outputBytes);
-        			core.getDefaultMapStorage().setStaticWebFile("standalone/config.js", os);
-        		}
-        		else {
-	                File f = new File(baseStandaloneDir, "config.js");
-	                FileOutputStream fos = null;
-	                try {
-	                    fos = new FileOutputStream(f);
-	                    fos.write(outputBytes);
-	                } catch (IOException iox) {
-	                    Log.severe("Exception while writing " + f.getPath(), iox);
-	                } finally {
-	                    if(fos != null) {
-	                        try {
-	                            fos.close();
-	                        } catch (IOException x) {}
-	                        fos = null;
-	                    }
-	                }        	
-        		}
-        	}
+        MapManager.scheduleDelayedJob(() -> {
+            if (core.getDefaultMapStorage().needsStaticWebFiles()) {
+                BufferOutputStream os = new BufferOutputStream();
+                os.write(outputBytes);
+                core.getDefaultMapStorage().setStaticWebFile("standalone/config.js", os);
+            }
+            else {
+                File f = new File(baseStandaloneDir, "config.js");
+                FileOutputStream fos = null;
+                try {
+                    fos = new FileOutputStream(f);
+                    fos.write(outputBytes);
+                } catch (IOException iox) {
+                    Log.severe("Exception while writing " + f.getPath(), iox);
+                } finally {
+                    if(fos != null) {
+                        try {
+                            fos.close();
+                        } catch (IOException x) {}
+                        fos = null;
+                    }
+                }
+            }
         }, 0);
     }
     
@@ -314,8 +312,23 @@ public class JsonFileClientUpdateComponent extends ClientUpdateComponent {
         else {
             outputFile = "dynmap_config.json";
         }
-        
-        enqueueFileWrite(outputFile, content, dowrap);
+
+        // Für internen Webserver (API-Zugriff)
+        if (storage.needsStaticWebFiles()) {
+            BufferOutputStream os = new BufferOutputStream();
+            if(dowrap) {
+                os.write("<?php /*\n".getBytes(cs_utf8));
+            }
+            os.write(content);
+            if(dowrap) {
+                os.write("\n*/ ?>\n".getBytes(cs_utf8));
+            }
+            // Datei für API-Zugriff bereitstellen
+            storage.setStaticWebFile("api/config", os);
+            storage.setStaticWebFile("standalone/" + outputFile, os);
+        } else {
+            enqueueFileWrite(outputFile, content, dowrap);
+        }
     }
     
     @SuppressWarnings("unchecked")
@@ -343,7 +356,22 @@ public class JsonFileClientUpdateComponent extends ClientUpdateComponent {
             CompletableFuture.runAsync(() -> {
                 byte[] content = Json.stringifyJson(update).getBytes(cs_utf8);
 
-                enqueueFileWrite(outputFile, content, dowrap);
+                // Für internen Webserver (API-Zugriff)
+                if (storage.needsStaticWebFiles()) {
+                    BufferOutputStream os = new BufferOutputStream();
+                    if(dowrap) {
+                        os.write("<?php /*\n".getBytes(cs_utf8));
+                    }
+                    os.write(content);
+                    if(dowrap) {
+                        os.write("\n*/ ?>\n".getBytes(cs_utf8));
+                    }
+                    // API-Route für Updates bereitstellen
+                    storage.setStaticWebFile("api/update/" + dynmapWorld.getName(), os);
+                    storage.setStaticWebFile("standalone/" + outputFile, os);
+                } else {
+                    enqueueFileWrite(outputFile, content, dowrap);
+                }
             });
         }
     }
@@ -363,6 +391,16 @@ public class JsonFileClientUpdateComponent extends ClientUpdateComponent {
                     return;
                 }
                 enqueueFileWrite(loginFile, bytes, false);
+
+                // Für internen Webserver (API-Zugriff)
+                if (storage.needsStaticWebFiles()) {
+                    BufferOutputStream os = new BufferOutputStream();
+                    os.write(bytes);
+                    storage.setStaticWebFile("api/login", os);
+                    storage.setStaticWebFile("standalone/" + loginFile, os);
+                } else {
+                    enqueueFileWrite(loginFile, bytes, false);
+                }
                 loginhash = hash;
             }
         }
@@ -385,6 +423,16 @@ public class JsonFileClientUpdateComponent extends ClientUpdateComponent {
                 return;
             }
             enqueueFileWrite(accessFile, bytes, false);
+
+            // Für internen Webserver (API-Zugriff)
+            if (storage.needsStaticWebFiles()) {
+                BufferOutputStream os = new BufferOutputStream();
+                os.write(bytes);
+                storage.setStaticWebFile("api/access", os);
+                storage.setStaticWebFile("standalone/" + accessFile, os);
+            } else {
+                enqueueFileWrite(accessFile, bytes, false);
+            }
             accesshash = hash;
         }
     }
@@ -517,7 +565,7 @@ public class JsonFileClientUpdateComponent extends ClientUpdateComponent {
 		}, 0);
     }
     protected void handleRegister() {
-        if(core.pendingRegisters() == false)
+        if(!core.pendingRegisters())
             return;
         BufferInputStream bis = storage.getStandaloneFile("dynmap_reg.php");
         if (bis != null) {
